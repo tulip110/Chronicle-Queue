@@ -27,7 +27,7 @@
 
     <groupId>net.openhft</groupId>
     <artifactId>chronicle</artifactId>
-    <version>3.6.6</version>
+    <version>3.6.7-SNAPSHOT</version>
     <packaging>bundle</packaging>
 
     <name>OpenHTF/Chronicle-Queue/chronicle</name>
@@ -239,7 +239,7 @@
         <url>scm:git:git@github.com:OpenHFT/Chronicle-Queue.git</url>
         <connection>scm:git:git@github.com:OpenHFT/Chronicle-Queue.git</connection>
         <developerConnection>scm:git:git@github.com:OpenHFT/Chronicle-Queue.git</developerConnection>
-        <tag>chronicle-3.6.6</tag>
+        <tag>3.6.x</tag>
     </scm>
 
 </project>

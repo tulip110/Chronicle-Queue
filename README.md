@@ -167,6 +167,16 @@ reader.close();
 chronicle.close();
 ```
 
+#### File Handlers Clean up
+
+Chronicle queue tailers may create file handlers, the file handlers are cleaned up whenever the chronicle queue associated with them is close() or whenever the Jvm runs a Garbage Collection. 
+If you are writing your code not have GC pauses and you explicitly want to clean up the file handlers, you can call the following:
+
+
+```java
+StoreTailer.releaseResources()
+```
+
 ## Replication
 
 Chronicle-Queue supports TCP replication with optional filtering so only the required record or even fields are transmitted. This improves performances and reduce bandwitdh requirements.

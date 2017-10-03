@@ -129,6 +129,10 @@ public class SingleChronicleQueue implements RollingChronicleQueue {
     private RollCycle rollCycle;
     @NotNull
     private RollingResourcesCache dateCache;
+    private int latestCycleFileDetected = 0;
+    private int lastCycleTreeObserved;
+    private NavigableMap<Long, File> cachedCycleTree;
+
     long firstAndLastCycleTime = 0;
     int firstAndLastRetry = 0;
     int firstCycle = Integer.MAX_VALUE, lastCycle = Integer.MIN_VALUE;
@@ -172,7 +176,11 @@ public class SingleChronicleQueue implements RollingChronicleQueue {
         sourceId = builder.sourceId();
         recoverySupplier = builder.recoverySupplier();
         readOnly = builder.readOnly();
-        directoryContent = new DirectoryContent(path.toPath());
+        directoryContent = new DirectoryContent(path.toPath(),
+                f -> dateCache.parseCount(
+                        f.getName().substring(0, f.getName().length() - SUFFIX.length())));
+        directoryContent.reserve();
+        directoryContent.refresh();
     }
 
     @Nullable
@@ -496,6 +504,7 @@ public class SingleChronicleQueue implements RollingChronicleQueue {
             closers.clear();
         }
         this.pool.close();
+        this.directoryContent.release();
     }
 
     @Override
@@ -546,6 +555,11 @@ public class SingleChronicleQueue implements RollingChronicleQueue {
             Thread.yield();
         }
 
+        final int mostRecentRollCycle = directoryContent.getMostRecentRollCycle();
+        if (mostRecentRollCycle <= latestCycleFileDetected) {
+            return;
+        }
+
         firstCycle = Integer.MAX_VALUE;
         lastCycle = Integer.MIN_VALUE;
 
@@ -572,6 +586,7 @@ public class SingleChronicleQueue implements RollingChronicleQueue {
 
         firstAndLastCycleTime = now;
         firstAndLastRetry = 0;
+        latestCycleFileDetected = mostRecentRollCycle;
     }
 
     @Override
@@ -688,6 +703,10 @@ public class SingleChronicleQueue implements RollingChronicleQueue {
         }
     }
 
+    int lastObservedCreatedCycle() {
+        return directoryContent.getMostRecentRollCycle();
+    }
+
     private class StoreSupplier implements WireStoreSupplier {
         @Override
         public WireStore acquire(int cycle, boolean createIfAbsent) {
@@ -697,18 +716,13 @@ public class SingleChronicleQueue implements RollingChronicleQueue {
                     .dateCache.resourceFor(cycle);
             try {
                 File path = dateValue.path;
-                final File parentFile = dateValue.parentPath;
-                if (parentFile != null && !parentFile.exists()) {
-                    if (createIfAbsent)
-                        parentFile.mkdirs();
-                    else
-                        return null;
+
+                if (!directoryContent.containsFileForCycle(cycle) &&
+                        (!createIfAbsent)) {
+                    return null;
                 }
 
-                if (!path.exists() && !createIfAbsent)
-                    return null;
-
-                directoryContent.onFileCreated(null, cycle);
+                directoryContent.onFileCreated(cycle);
 
                 if (createIfAbsent)
                     checkDiskSpace(path);
@@ -763,23 +777,29 @@ public class SingleChronicleQueue implements RollingChronicleQueue {
          * @throws ParseException
          */
         @NotNull
-        private NavigableMap<Long, File> cycleTree() {
+        private synchronized NavigableMap<Long, File> cycleTree() {
 
-            final File parentFile = path;
+            final int mostRecentRollCycle = directoryContent.getMostRecentRollCycle();
+            if (mostRecentRollCycle > lastCycleTreeObserved || cachedCycleTree == null) {
+                final File parentFile = path;
 
-            if (!parentFile.exists())
-                throw new IllegalStateException("parentFile=" + parentFile.getName() + " does not exist");
+                if (!parentFile.exists())
+                    throw new IllegalStateException("parentFile=" + parentFile.getName() + " does not exist");
 
-            final RollingResourcesCache dateCache = SingleChronicleQueue.this.dateCache;
-            final NavigableMap<Long, File> tree = new TreeMap<>();
+                final RollingResourcesCache dateCache = SingleChronicleQueue.this.dateCache;
+                final NavigableMap<Long, File> tree = new TreeMap<>();
 
-            final File[] files = parentFile.listFiles((File file) -> file.getPath().endsWith(SUFFIX));
+                final File[] files = parentFile.listFiles((File file) -> file.getPath().endsWith(SUFFIX));
 
-            for (File file : files) {
-                tree.put(dateCache.toLong(file), file);
+                for (File file : files) {
+                    tree.put(dateCache.toLong(file), file);
+                }
+
+                cachedCycleTree = tree;
+                lastCycleTreeObserved = mostRecentRollCycle;
             }
 
-            return tree;
+            return cachedCycleTree;
         }
 
         @Override
@@ -791,7 +811,7 @@ public class SingleChronicleQueue implements RollingChronicleQueue {
             final NavigableMap<Long, File> tree = cycleTree();
             final File currentCycleFile = dateCache.resourceFor(currentCycle).path;
 
-            if (!currentCycleFile.exists())
+            if (currentCycle > directoryContent.getMostRecentRollCycle() && !currentCycleFile.exists())
                 throw new IllegalStateException("file not exists, currentCycle, " + "file=" + currentCycleFile);
 
             Long key = dateCache.toLong(currentCycleFile);

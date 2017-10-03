@@ -31,6 +31,10 @@ public class RollDetails extends AbstractMarshallable {
         return cycle;
     }
 
+    public long epoch() {
+        return epoch;
+    }
+
     // generated for performance
     @Override
     public boolean equals(@Nullable Object o) {

@@ -57,6 +57,7 @@ public class RollCycleMultiThreadTest {
                 try (final DocumentContext dc = appender.writingDocument()) {
                     dc.wire().write().text("Day 3 data");
                 }
+                RollCycleTest.waitForQueueFileCount(path, 1);
                 Assert.assertEquals(1, (int) scheduledExecutorService.submit(observer::call).get());
                 assertEquals(1, observer.documentsRead);
 
@@ -93,6 +94,7 @@ public class RollCycleMultiThreadTest {
                 try (final DocumentContext dc = appender.writingDocument()) {
                     dc.wire().write().text("Day 1 data");
                 }
+                RollCycleTest.waitForQueueFileCount(path, 1);
 
                 Assert.assertEquals(1, (int) scheduledExecutorService.submit(observer).get());
 
@@ -102,6 +104,7 @@ public class RollCycleMultiThreadTest {
                 try (final DocumentContext dc = appender.writingDocument()) {
                     dc.wire().write().text("Day 3 data");
                 }
+                RollCycleTest.waitForQueueFileCount(path, 2);
 
                 Assert.assertEquals(2, (int) scheduledExecutorService.submit(observer).get());
 

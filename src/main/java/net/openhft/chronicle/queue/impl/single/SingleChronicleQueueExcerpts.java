@@ -1198,6 +1198,9 @@ public class SingleChronicleQueueExcerpts {
         }
 
         private long nextIndexWithNextAvailableCycle0(int cycle) {
+            if (cycle > queue.lastObservedCreatedCycle()) {
+                return Long.MIN_VALUE;
+            }
             if (cycle > queue.lastCycle() || direction == TailerDirection.NONE) {
                 return Long.MIN_VALUE;
             }

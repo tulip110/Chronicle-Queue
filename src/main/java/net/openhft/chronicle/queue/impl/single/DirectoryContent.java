@@ -11,44 +11,66 @@ import java.io.RandomAccessFile;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.function.ToIntFunction;
 
 public final class DirectoryContent implements ReferenceCounted {
-    private static final int RECORD_COUNT = 8;
+    private static final int RECORD_COUNT = 64;
+    private static final int RECORD_SIZE = 64;
     private final Bytes bytes;
     private final ReferenceCounter rc;
+    private final Path queuePath;
+    private final ToIntFunction<File> fileToCycleFunction;
 
-    DirectoryContent(final Path queuePath) {
+    DirectoryContent(final Path queuePath, final ToIntFunction<File> fileToCycleFunction) {
+        this.queuePath = queuePath;
+        this.fileToCycleFunction = fileToCycleFunction;
         final File file = queuePath.resolve("directory-contents.idx").toFile();
         try {
             Files.createDirectories(queuePath);
             file.createNewFile();
             final RandomAccessFile raf = new RandomAccessFile(file, "rw");
-            raf.setLength(RECORD_COUNT * 4);
+            raf.setLength(RECORD_COUNT * RECORD_SIZE);
             raf.close();
-            bytes = MappedBytes.mappedBytes(file, 4);
+            bytes = MappedBytes.mappedBytes(file, RECORD_SIZE);
             rc = ReferenceCounter.onReleased(bytes::release);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
     }
 
-    public int getMostRecentRollCycle()
+    void refresh() {
+        final File[] queueFiles = queuePath.toFile().listFiles(SingleChronicleQueue.QUEUE_FILE_FILTER);
+        for (File queueFile : queueFiles) {
+            onFileCreated(fileToCycleFunction.applyAsInt(queueFile));
+        }
+    }
+
+    boolean containsFileForCycle(final int cycle) {
+        for (int i = 0; i < RECORD_COUNT; i++) {
+            if (cycle == bytes.readVolatileInt(i * RECORD_SIZE)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    int getMostRecentRollCycle()
     {
         int maxRollCycle = 0;
         for (int i = 0; i < RECORD_COUNT; i++) {
-            maxRollCycle = Math.max(maxRollCycle, bytes.readVolatileInt(i * 4));
+            maxRollCycle = Math.max(maxRollCycle, bytes.readVolatileInt(i * RECORD_SIZE));
         }
 
         return maxRollCycle;
     }
 
-    public void onFileCreated(final Path path, final int rollCycle)
+    void onFileCreated(final int rollCycle)
     {
         final int index = rollCycle & (RECORD_COUNT - 1);
         while (true) {
-            final int currentCycle = bytes.readVolatileInt(index * 4);
+            final int currentCycle = bytes.readVolatileInt(index * RECORD_SIZE);
             if (rollCycle > currentCycle) {
-                if (bytes.compareAndSwapInt(index * 4, currentCycle, rollCycle)) {
+                if (bytes.compareAndSwapInt(index * RECORD_SIZE, currentCycle, rollCycle)) {
                     return;
                 }
             } else {
@@ -57,13 +79,13 @@ public final class DirectoryContent implements ReferenceCounted {
         }
     }
 
-    public void onFileDeleted(final Path path, final int rollCycle)
+    void onFileDeleted(final int rollCycle)
     {
         final int index = rollCycle & (RECORD_COUNT - 1);
         while (true) {
-            final int currentCycle = bytes.readVolatileInt(index * 4);
+            final int currentCycle = bytes.readVolatileInt(index * RECORD_SIZE);
             if (rollCycle == currentCycle) {
-                if (bytes.compareAndSwapInt(index * 4, rollCycle, 0)) {
+                if (bytes.compareAndSwapInt(index * RECORD_SIZE, rollCycle, 0)) {
                     return;
                 }
             } else {

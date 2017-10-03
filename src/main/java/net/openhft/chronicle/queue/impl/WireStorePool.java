@@ -19,6 +19,8 @@ import net.openhft.chronicle.core.annotation.Nullable;
 import net.openhft.chronicle.queue.RollDetails;
 import net.openhft.chronicle.queue.TailerDirection;
 import org.jetbrains.annotations.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.lang.ref.Reference;
 import java.lang.ref.WeakReference;
@@ -27,8 +29,6 @@ import java.util.Map;
 import java.util.NavigableSet;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class WireStorePool {
     private static final Logger LOGGER = LoggerFactory.getLogger(WireStorePool.class);
@@ -37,6 +37,8 @@ public class WireStorePool {
     @NotNull
     private final Map<RollDetails, WeakReference<WireStore>> stores;
     private final StoreFileListener storeFileListener;
+    private final ThreadLocal<RollDetailsCache> rollDetailsTL = ThreadLocal.withInitial(RollDetailsCache::new);
+
     private boolean isClosed = false;
 
     private WireStorePool(@NotNull WireStoreSupplier supplier, StoreFileListener storeFileListener) {
@@ -64,7 +66,7 @@ public class WireStorePool {
     @org.jetbrains.annotations.Nullable
     @Nullable
     public synchronized WireStore acquire(final int cycle, final long epoch, boolean createIfAbsent) {
-        RollDetails rollDetails = new RollDetails(cycle, epoch);
+        RollDetails rollDetails = rollDetailsTL.get().cachedValueForCycle(cycle, epoch);
         WeakReference<WireStore> reference = stores.get(rollDetails);
         WireStore store;
         if (reference != null) {
@@ -119,5 +121,20 @@ public class WireStorePool {
      */
     public NavigableSet<Long> listCyclesBetween(int lowerCycle, int upperCycle) throws ParseException {
         return supplier.cycles(lowerCycle, upperCycle);
+    }
+
+    private static final class RollDetailsCache {
+        // needs to be size two for pathological case of
+        // checking for currentCycle, then currentCycle + 1
+        private final RollDetails[] cache = new RollDetails[2];
+
+        RollDetails cachedValueForCycle(final int cycle, final long epoch) {
+            final int index = cycle & 1;
+            final RollDetails first = cache[index];
+            if (first == null || first.cycle() != cycle || first.epoch() != epoch) {
+                cache[index] = new RollDetails(cycle, epoch);
+            }
+            return cache[index];
+        }
     }
 }

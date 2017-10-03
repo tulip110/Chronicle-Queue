@@ -16,10 +16,13 @@ import org.junit.Test;
 
 import java.io.File;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+import static net.openhft.chronicle.queue.impl.single.SingleChronicleQueue.QUEUE_FILE_FILTER;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
 
 public class RollCycleTest {
     @Test
@@ -46,6 +49,7 @@ public class RollCycleTest {
 
             appender.writeText("Day 3 data");
 
+            waitForQueueFileCount(path, 1);
             // allow parallel tailer to finish iteration
             Thread.sleep(2000);
 
@@ -82,6 +86,7 @@ public class RollCycleTest {
 
             appender.writeText("Day 3 data");
 
+            waitForQueueFileCount(path, 2);
             // allow parallel tailer to finish iteration
             Thread.sleep(2000);
 
@@ -91,6 +96,7 @@ public class RollCycleTest {
         assertEquals(2, observer.documentsRead);
         observer.queue.close();
     }
+
 
     @Test
     public void testWriteToCorruptedFile() throws Exception {
@@ -127,6 +133,17 @@ public class RollCycleTest {
         }
     }
 
+    static void waitForQueueFileCount(final File dir, final int expectedCount) {
+        final long timeoutAt = System.currentTimeMillis() + 10_000L;
+        while (System.currentTimeMillis() < timeoutAt) {
+            if (dir.listFiles(QUEUE_FILE_FILTER).length >= expectedCount) {
+                return;
+            }
+        }
+
+        fail(Arrays.toString(dir.listFiles(QUEUE_FILE_FILTER)));
+    }
+
     @After
     public void checkMappedFiles() {
         MappedFile.checkMappedFiles();
@@ -150,7 +167,7 @@ public class RollCycleTest {
     class ParallelQueueObserver implements Runnable, StoreFileListener {
         SingleChronicleQueue queue;
         CountDownLatch progressLatch;
-        int documentsRead;
+        volatile int documentsRead;
 
         public ParallelQueueObserver(TimeProvider timeProvider, @NotNull Path path) {
             queue = SingleChronicleQueueBuilder.fieldlessBinary(path.toFile())

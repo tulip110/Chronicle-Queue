@@ -268,8 +268,10 @@ public final class AppenderFileHandleLeakTest {
     }
 
     private SingleChronicleQueue createQueue(final TimeProvider timeProvider) {
+        final File basePathFile = DirectoryUtils.tempDir(AppenderFileHandleLeakTest.class.getSimpleName());
+        System.out.println(basePathFile.getAbsolutePath());
         return SingleChronicleQueueBuilder.
-                binary(DirectoryUtils.tempDir(AppenderFileHandleLeakTest.class.getSimpleName())).
+                binary(basePathFile).
                 rollCycle(RollCycles.TEST_SECONDLY).
                 wireType(WireType.BINARY_LIGHT).
                 storeFileListener(storeFileListener).

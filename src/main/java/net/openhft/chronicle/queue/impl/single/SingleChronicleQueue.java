@@ -24,22 +24,47 @@ import net.openhft.chronicle.core.threads.EventLoop;
 import net.openhft.chronicle.core.threads.ThreadLocalHelper;
 import net.openhft.chronicle.core.time.TimeProvider;
 import net.openhft.chronicle.core.util.StringUtils;
-import net.openhft.chronicle.queue.*;
-import net.openhft.chronicle.queue.impl.*;
+import net.openhft.chronicle.queue.CycleCalculator;
+import net.openhft.chronicle.queue.ExcerptAppender;
+import net.openhft.chronicle.queue.ExcerptTailer;
+import net.openhft.chronicle.queue.RollCycle;
+import net.openhft.chronicle.queue.TailerDirection;
+import net.openhft.chronicle.queue.impl.CommonStore;
+import net.openhft.chronicle.queue.impl.RollingChronicleQueue;
+import net.openhft.chronicle.queue.impl.RollingResourcesCache;
+import net.openhft.chronicle.queue.impl.WireStore;
+import net.openhft.chronicle.queue.impl.WireStorePool;
+import net.openhft.chronicle.queue.impl.WireStoreSupplier;
 import net.openhft.chronicle.threads.Pauser;
-import net.openhft.chronicle.wire.*;
+import net.openhft.chronicle.wire.AbstractWire;
+import net.openhft.chronicle.wire.DocumentContext;
+import net.openhft.chronicle.wire.TextWire;
+import net.openhft.chronicle.wire.ValueIn;
+import net.openhft.chronicle.wire.Wire;
+import net.openhft.chronicle.wire.WireType;
+import net.openhft.chronicle.wire.Wires;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.*;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StreamCorruptedException;
+import java.io.Writer;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.ParseException;
-import java.util.*;
+import java.util.Map;
+import java.util.NavigableMap;
+import java.util.NavigableSet;
+import java.util.Optional;
+import java.util.TreeMap;
+import java.util.WeakHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -93,6 +118,7 @@ public class SingleChronicleQueue implements RollingChronicleQueue {
     private final CycleCalculator cycleCalculator;
     @NotNull
     private final Function<String, File> nameToFile;
+    private final boolean reduceTailerGarbage;
     @NotNull
     private RollCycle rollCycle;
     @NotNull
@@ -125,6 +151,7 @@ public class SingleChronicleQueue implements RollingChronicleQueue {
         pauserSupplier = builder.pauserSupplier();
         timeoutMS = builder.timeoutMS();
         storeFactory = builder.storeFactory();
+        this.reduceTailerGarbage = builder.reduceTailerPollingGarbage();
 
         if (builder.getClass().getName().equals("software.chronicle.enterprise.queue.EnterpriseChronicleQueueBuilder")) {
             try {
@@ -500,8 +527,8 @@ public class SingleChronicleQueue implements RollingChronicleQueue {
     }
 
     @Nullable
-    String[] getList() {
-        return path.list();
+    String[] getQueueFiles() {
+        return path.list((dir, name) -> name.endsWith(SUFFIX));
     }
 
     private void setFirstAndLastCycle() {
@@ -517,15 +544,16 @@ public class SingleChronicleQueue implements RollingChronicleQueue {
         lastCycle = Integer.MIN_VALUE;
 
         // we use this to double check the result
-        final String[] files = getList();
+        final String[] files = getQueueFiles();
 
-        if (files == null)
+        if (files == null || files.length == 0) {
+            if (reduceTailerGarbage) {
+                createQueueFileForCurrentCycle();
+            }
             return;
+        }
 
         for (String file : files) {
-
-            if (!file.endsWith(SUFFIX))
-                continue;
 
             file = file.substring(0, file.length() - SUFFIX.length());
 
@@ -539,6 +567,13 @@ public class SingleChronicleQueue implements RollingChronicleQueue {
 
         firstAndLastCycleTime = now;
         firstAndLastRetry = 0;
+    }
+
+    private void createQueueFileForCurrentCycle() {
+        final int currentCycle = rollCycle.current(time, epoch);
+        final RollingResourcesCache.Resource resource = dateCache.resourceFor(currentCycle);
+        resource.parentPath.mkdirs();
+        storeForCycle(currentCycle, epoch, true).release();
     }
 
     @Override

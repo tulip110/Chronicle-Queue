@@ -23,7 +23,12 @@ import net.openhft.chronicle.core.OS;
 import net.openhft.chronicle.core.threads.EventLoop;
 import net.openhft.chronicle.core.time.SystemTimeProvider;
 import net.openhft.chronicle.core.time.TimeProvider;
-import net.openhft.chronicle.queue.*;
+import net.openhft.chronicle.queue.BufferMode;
+import net.openhft.chronicle.queue.ChronicleQueueBuilder;
+import net.openhft.chronicle.queue.CycleCalculator;
+import net.openhft.chronicle.queue.DefaultCycleCalculator;
+import net.openhft.chronicle.queue.RollCycle;
+import net.openhft.chronicle.queue.RollCycles;
 import net.openhft.chronicle.queue.impl.single.RollCycleRetriever;
 import net.openhft.chronicle.queue.impl.single.StoreRecoveryFactory;
 import net.openhft.chronicle.queue.impl.single.TimedStoreRecovery;
@@ -66,6 +71,7 @@ public abstract class AbstractChronicleQueueBuilder<B extends ChronicleQueueBuil
     protected EventLoop eventLoop;
     @NotNull
     protected CycleCalculator cycleCalculator = DefaultCycleCalculator.INSTANCE;
+    protected boolean reduceTailerGarbage = false;
     private long bufferCapacity;
     private int indexSpacing;
     private int indexCount;
@@ -351,6 +357,16 @@ public abstract class AbstractChronicleQueueBuilder<B extends ChronicleQueueBuil
     @Override
     public StoreFileListener storeFileListener() {
         return storeFileListener;
+    }
+
+    @NotNull
+    public B reduceTailerPollingGarbage(boolean on) {
+        this.reduceTailerGarbage = true;
+        return (B) this;
+    }
+
+    public boolean reduceTailerPollingGarbage() {
+        return reduceTailerGarbage;
     }
 
     public B sourceId(int sourceId) {

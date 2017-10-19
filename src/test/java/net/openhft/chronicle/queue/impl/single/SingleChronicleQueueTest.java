@@ -72,6 +72,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.stream.IntStream;
 
@@ -3365,15 +3366,17 @@ public class SingleChronicleQueueTest extends ChronicleQueueTestBase {
 
         final File dir = DirectoryUtils.tempDir(testName.getMethodName());
         final RollCycles rollCycle = RollCycles.TEST_SECONDLY;
+        final AtomicLong clock = new AtomicLong(System.currentTimeMillis());
 
         try (ChronicleQueue queuet = binary(dir)
                 .rollCycle(rollCycle)
+//                .timeProvider(clock::get)
                 .build()) {
 
             final ExcerptTailer tailer = queuet.createTailer();
 
             // write first message
-            try (ChronicleQueue queue =
+            try (SingleChronicleQueue queue =
                          binary(dir)
                                  .rollCycle(rollCycle)
                                  .build()) {
@@ -3381,12 +3384,14 @@ public class SingleChronicleQueueTest extends ChronicleQueueTestBase {
                 for (int i = 0; i < 5; i++) {
 
                     final ExcerptAppender appender = queue.acquireAppender();
+//                    clock.addAndGet(1100);
                     Thread.sleep(1100);
                     try (final DocumentContext dc = appender.writingDocument()) {
                         dc.wire().write("some").int32(i);
                     }
 
                     try (final DocumentContext dc = tailer.readingDocument()) {
+                        assertTrue(dc.isPresent());
                         Assert.assertEquals(i, dc.wire().read("some").int32());
                     }
                 }

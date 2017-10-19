@@ -241,6 +241,12 @@ public class SingleChronicleQueueBuilder<S extends SingleChronicleQueueBuilder>
         return this;
     }
 
+    @NotNull
+    @Override
+    public SingleChronicleQueueBuilder<S> reduceTailerPollingGarbage(final boolean on) {
+        return super.reduceTailerPollingGarbage(on);
+    }
+
     @Override
     public SingleChronicleQueueBuilder<S> sourceId(int sourceId) {
         return super.sourceId(sourceId);

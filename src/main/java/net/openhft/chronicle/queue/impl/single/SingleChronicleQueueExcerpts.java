@@ -1151,13 +1151,18 @@ public class SingleChronicleQueueExcerpts {
 
         private boolean checkMoveToNextCycle(boolean includeMetaData, @NotNull Bytes<?> bytes)
                 throws EOFException, StreamCorruptedException {
+            writeEndOfFileMarkerAtCurrentPosition(bytes, store);
+            return inACycle(includeMetaData, false);
+        }
+
+        private void writeEndOfFileMarkerAtCurrentPosition(final @NotNull Bytes<?> bytes, final WireStore wireStore) {
             if (bytes.readWrite()) {
                 long pos = bytes.readPosition();
                 long lim = bytes.readLimit();
                 long wlim = bytes.writeLimit();
                 try {
                     bytes.writePosition(pos);
-                    store.writeEOF(wire(), timeoutMS());
+                    wireStore.writeEOF(wire(), timeoutMS());
                 } catch (TimeoutException e) {
                     Jvm.warn().on(getClass(), "Unable to append EOF, skipping", e);
                 } finally {
@@ -1168,7 +1173,6 @@ public class SingleChronicleQueueExcerpts {
             } else {
                 Jvm.debug().on(getClass(), "Unable to append EOF to ReadOnly store, skipping");
             }
-            return inACycle(includeMetaData, false);
         }
 
         private long nextIndexWithNextAvailableCycle(int cycle) {

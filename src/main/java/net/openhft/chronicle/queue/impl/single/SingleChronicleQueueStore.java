@@ -22,7 +22,6 @@ import net.openhft.chronicle.core.Jvm;
 import net.openhft.chronicle.core.Maths;
 import net.openhft.chronicle.core.ReferenceCounter;
 import net.openhft.chronicle.core.annotation.UsedViaReflection;
-import net.openhft.chronicle.core.io.IORuntimeException;
 import net.openhft.chronicle.core.pool.ClassAliasPool;
 import net.openhft.chronicle.core.values.LongValue;
 import net.openhft.chronicle.queue.RollCycle;
@@ -351,6 +350,11 @@ public class SingleChronicleQueueStore implements WireStore {
     }
 
     @Override
+    public ScanResult linearScanTo(final long index, final long knownIndex, final ExcerptContext ec, final long knownAddress) {
+        return indexing.linearScanTo(index, knownIndex, ec, knownAddress);
+    }
+
+    @Override
     public long writeHeader(@NotNull Wire wire, int length, int safeLength, long timeoutMS) throws EOFException, UnrecoverableTimeoutException {
         return recovery.writeHeader(wire, length, safeLength, timeoutMS, writePosition);
     }
@@ -381,22 +385,6 @@ public class SingleChronicleQueueStore implements WireStore {
 
     int rollIndexSpacing() {
         return indexing.indexSpacing();
-    }
-
-    enum MetaDataField implements WireKey {
-        wireType,
-        writePosition,
-        roll,
-        indexing,
-        lastAcknowledgedIndexReplicated,
-        recovery,
-        deltaCheckpointInterval;
-
-        @Nullable
-        @Override
-        public Object defaultValue() {
-            throw new IORuntimeException("field " + name() + " required");
-        }
     }
 
 }

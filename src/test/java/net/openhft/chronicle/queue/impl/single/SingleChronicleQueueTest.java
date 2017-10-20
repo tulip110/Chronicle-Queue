@@ -34,7 +34,6 @@ import net.openhft.chronicle.queue.ExcerptTailer;
 import net.openhft.chronicle.queue.RollCycle;
 import net.openhft.chronicle.queue.RollCycles;
 import net.openhft.chronicle.queue.TailerDirection;
-import net.openhft.chronicle.queue.TailerState;
 import net.openhft.chronicle.queue.impl.RollingChronicleQueue;
 import net.openhft.chronicle.queue.impl.single.SingleChronicleQueueExcerpts.InternalAppender;
 import net.openhft.chronicle.wire.AbstractMarshallable;
@@ -73,7 +72,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.stream.IntStream;
 
@@ -93,6 +91,7 @@ import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.junit.Assume.assumeFalse;
+import static org.junit.Assume.assumeTrue;
 
 @RunWith(Parameterized.class)
 public class SingleChronicleQueueTest extends ChronicleQueueTestBase {
@@ -162,47 +161,6 @@ public class SingleChronicleQueueTest extends ChronicleQueueTestBase {
             }
 
             assertThat(countEntries(queue), is(10L));
-        }
-    }
-
-    @Ignore("test to demonstrate edge case")
-    @Test
-    public void shouldNotGenerateExcessGarbageWhenPollingEndOfQueue() throws Exception {
-        final AtomicLong clock = new AtomicLong(System.currentTimeMillis());
-        try (final ChronicleQueue queue = builder(getTmpDir(), wireType)
-                .timeProvider(clock::get)
-                .build()) {
-            try (final DocumentContext documentContext = queue.acquireAppender().writingDocument()) {
-                documentContext.wire().write("key").text("value");
-            }
-
-            clock.addAndGet(TimeUnit.DAYS.toMillis(3L));
-
-            final ExcerptTailer tailer = queue.createTailer();
-            while (tailer.readingDocument().isPresent()) {
-                // move to end of queue
-            }
-
-            assertThat(tailer.state(), is(TailerState.END_OF_CYCLE));
-
-            long pollCount = 0L;
-            long lastPoll = 0L;
-            long mask = (1 << 14) - 1;
-            long lastReport = System.nanoTime();
-            while (!Thread.currentThread().isInterrupted()) {
-//                assertThat(tailer.readingDocument().isPresent(), is(false));
-                if (tailer.readingDocument().isPresent()) {
-                    fail();
-                }
-
-                if ((pollCount++ & mask) == 0) {
-                    long time = System.nanoTime() - lastReport;
-                    long work = pollCount - lastPoll;
-                    System.out.printf("%dns, %3f/sec%n", work, time / (double)TimeUnit.SECONDS.toNanos(1L));
-                    lastReport = System.nanoTime();
-                    lastPoll = pollCount;
-                }
-            }
         }
     }
 
@@ -1404,7 +1362,9 @@ public class SingleChronicleQueueTest extends ChronicleQueueTestBase {
             // create 100 documents
             for (int i = 0; i < 100; i++) {
                 final int j = i;
-                appender.writeDocument(wire -> wire.write(() -> "key").text("value=" + j));
+                try (final DocumentContext context = appender.writingDocument()) {
+                    context.wire().write(() -> "key").text("value=" + j);
+                }
             }
             long lastIndex = appender.lastIndexAppended();
 
@@ -1413,15 +1373,16 @@ public class SingleChronicleQueueTest extends ChronicleQueueTestBase {
             assertEquals(queue.lastCycle(), cycle);
             final ExcerptTailer tailer = queue.createTailer();
 
-            System.out.println(queue.dump());
-
             StringBuilder sb = new StringBuilder();
 
             for (int i : new int[]{0, 8, 7, 9, 64, 65, 66}) {
+                final long index = queue.rollCycle().toIndex(cycle, i);
                 assertTrue("i: " + i,
                         tailer.moveToIndex(
-                                queue.rollCycle().toIndex(cycle, i)));
-                tailer.readDocument(wire -> wire.read(() -> "key").text(sb));
+                                index));
+                final DocumentContext context = tailer.readingDocument();
+                assertThat(context.index(), is(index));
+                context.wire().read(() -> "key").text(sb);
                 Assert.assertEquals("value=" + i, sb.toString());
             }
         }
@@ -2587,6 +2548,24 @@ public class SingleChronicleQueueTest extends ChronicleQueueTestBase {
                 readForward(chronicle, entries);
                 readBackward(chronicle, entries);
             }
+        }
+    }
+
+    @Test
+    public void shouldReadBackwardFromEndOfQueueWhenDirectionIsSetAfterMoveToEnd() throws Exception {
+        assumeTrue(wireType == WireType.BINARY);
+        try (final ChronicleQueue queue = builder(getTmpDir(), this.wireType)
+                .rollCycle(TEST2_DAILY)
+                .build()) {
+
+            final ExcerptAppender appender = queue.acquireAppender();
+            appender.writeDocument(w -> w.writeEventName("hello").text("world"));
+
+            final ExcerptTailer tailer = queue.createTailer();
+            tailer.toEnd();
+            tailer.direction(TailerDirection.BACKWARD);
+
+            assertThat(tailer.readingDocument().isPresent(), is(true));
         }
     }
 

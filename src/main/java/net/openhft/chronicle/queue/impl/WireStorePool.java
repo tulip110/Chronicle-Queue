@@ -94,7 +94,7 @@ public class WireStorePool {
         return supplier.nextCycle(currentCycle, direction);
     }
 
-    public synchronized void release(@NotNull WireStore store) {
+    public synchronized void release(@NotNull CommonStore store) {
         store.release();
 
         long refCount = store.refCount();

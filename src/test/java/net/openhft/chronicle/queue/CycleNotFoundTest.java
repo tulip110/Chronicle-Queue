@@ -36,7 +36,7 @@ import static net.openhft.chronicle.queue.RollCycles.TEST_SECONDLY;
 import static org.junit.Assert.assertEquals;
 
 public class CycleNotFoundTest extends ChronicleQueueTestBase {
-    private static final int BLOCK_SIZE = 256 << 20;
+
     private static final int NUMBER_OF_TAILERS = 10;
     private static final long INTERVAL_US = 25;
     private static final long NUMBER_OF_MSG = 100_000; // this is working this  1_000_000 but

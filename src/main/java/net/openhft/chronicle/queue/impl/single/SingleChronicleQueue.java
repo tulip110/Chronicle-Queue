@@ -24,24 +24,10 @@ import net.openhft.chronicle.core.threads.EventLoop;
 import net.openhft.chronicle.core.threads.ThreadLocalHelper;
 import net.openhft.chronicle.core.time.TimeProvider;
 import net.openhft.chronicle.core.util.StringUtils;
-import net.openhft.chronicle.queue.CycleCalculator;
-import net.openhft.chronicle.queue.ExcerptAppender;
-import net.openhft.chronicle.queue.ExcerptTailer;
-import net.openhft.chronicle.queue.RollCycle;
-import net.openhft.chronicle.queue.TailerDirection;
-import net.openhft.chronicle.queue.impl.RollingChronicleQueue;
-import net.openhft.chronicle.queue.impl.RollingResourcesCache;
-import net.openhft.chronicle.queue.impl.WireStore;
-import net.openhft.chronicle.queue.impl.WireStorePool;
-import net.openhft.chronicle.queue.impl.WireStoreSupplier;
+import net.openhft.chronicle.queue.*;
+import net.openhft.chronicle.queue.impl.*;
 import net.openhft.chronicle.threads.Pauser;
-import net.openhft.chronicle.wire.AbstractWire;
-import net.openhft.chronicle.wire.DocumentContext;
-import net.openhft.chronicle.wire.TextWire;
-import net.openhft.chronicle.wire.ValueIn;
-import net.openhft.chronicle.wire.Wire;
-import net.openhft.chronicle.wire.WireType;
-import net.openhft.chronicle.wire.Wires;
+import net.openhft.chronicle.wire.*;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -60,12 +46,7 @@ import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.ParseException;
-import java.util.Map;
-import java.util.NavigableMap;
-import java.util.NavigableSet;
-import java.util.Optional;
-import java.util.TreeMap;
-import java.util.WeakHashMap;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -227,13 +208,13 @@ public class SingleChronicleQueue implements RollingChronicleQueue {
     public String dump() {
         StringBuilder sb = new StringBuilder();
         for (int i = firstCycle(), max = lastCycle(); i <= max; i++) {
-            WireStore wireStore = storeForCycle(i, epoch, false);
-            if (wireStore != null) {
+            CommonStore commonStore = storeForCycle(i, epoch, false);
+            if (commonStore != null) {
                 try {
 //                    sb.append("# ").append(wireStore.bytes().mappedFile().file()).append("\n");
-                    sb.append(wireStore.dump());
+                    sb.append(commonStore.dump());
                 } finally {
-                    release(wireStore);
+                    release(commonStore);
                 }
             }
         }
@@ -508,7 +489,7 @@ public class SingleChronicleQueue implements RollingChronicleQueue {
     }
 
     @Override
-    public final void release(@Nullable WireStore store) {
+    public final void release(@Nullable CommonStore store) {
         if (store != null)
             this.pool.release(store);
     }
@@ -662,7 +643,7 @@ public class SingleChronicleQueue implements RollingChronicleQueue {
     public String toString() {
         return "SingleChronicleQueue{" +
                 "sourceId=" + sourceId +
-                ", path=" + path +
+                ", file=" + path +
                 '}';
     }
 

@@ -665,7 +665,7 @@ class SCQIndexing implements Demarshallable, WriteMarshallable, Closeable {
     }
 
     public boolean indexable(long index) {
-        return (index & (indexSpacing - 1)) != 0;
+        return (index & (indexSpacing - 1)) == 0;
     }
 
     public long lastSequenceNumber(@NotNull StoreRecovery recovery, @NotNull ExcerptContext ec)

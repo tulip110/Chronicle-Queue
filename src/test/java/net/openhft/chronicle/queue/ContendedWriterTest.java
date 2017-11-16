@@ -27,7 +27,9 @@ import net.openhft.chronicle.wire.*;
 import org.jetbrains.annotations.NotNull;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.FixMethodOrder;
 import org.junit.Test;
+import org.junit.runners.MethodSorters;
 
 import java.io.File;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -35,8 +37,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import static org.junit.Assert.assertEquals;
 
 /*
- * Created by xxxxxx
+ * Created by Jerry Shea 16/11/17
  */
+@FixMethodOrder(MethodSorters.NAME_ASCENDING)
 public class ContendedWriterTest {
     final String STRATEGY = Boolean.getBoolean("header.write.defer") ? "DEFFERED " : "ORIGINAL ";
     final AtomicBoolean running = new AtomicBoolean(true);
@@ -56,8 +59,8 @@ public class ContendedWriterTest {
     }
 
     @Test
-    public void test1() {
-        System.out.println("test1");
+    public void oneThread() {
+        System.out.println("oneThread");
         File path1 = DirectoryUtils.tempDir("testContended");
 
         try (SingleChronicleQueue queue1 = SingleChronicleQueueBuilder
@@ -75,7 +78,7 @@ public class ContendedWriterTest {
             running.set(true);
             StartAndMonitor s1 = new StartAndMonitor(queue1, "1", 1, 0);
 
-            Jvm.pause(Jvm.isDebug() ? 30_000 : 10_000);
+            Jvm.pause(Jvm.isDebug() ? 30_000 : 5_000);
             running.set(false);
             Jvm.pause(50);
 
@@ -84,21 +87,18 @@ public class ContendedWriterTest {
     }
 
     @Test
-    public void testContended_15_15() {
-        // 2 threads writing large messages at same (slow) rate
-        testContended("testContended_15_15", 1, 5, 1, 5);
+    public void twoThreadsWritingLargeMessagesAtSameSlowRate() {
+        testContended("twoThreadsWritingLargeMessagesAtSameSlowRate", 1, 5, 1, 5);
     }
 
     @Test
-    public void testContended_10_15() {
-        // 2 threads writing large messages, 1 fast, 1 slow
-        testContended("testContended_10_15", 1, 0, 1, 5);
+    public void twoThreadsWritingLargeMessagesOneFastOneSlow() {
+        testContended("twoThreadsWritingLargeMessagesOneFastOneSlow", 1, 0, 1, 5);
     }
 
     @Test
-    public void testContended_10_05() {
-        // 2 threads writing large messages, 1 fast, 1 slow (no delay)
-        testContended("testContended_10_05", 1, 0, 0, 5);
+    public void twoThreadsWritingLargeMessagesFastAndSmallMessagesSlow() {
+        testContended("twoThreadsWritingLargeMessagesFastAndSmallMessagesSlow", 1, 0, 0, 5);
     }
 
     private void testContended(String name, int wp1, int sbm1, int wp2, int sbm2) {
